@@ -12,9 +12,6 @@ app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'
 app.config['UPLOAD_FOLDER'] = 'newsletters'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Ensure upload directory exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
 # Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -33,20 +30,38 @@ def load_user(user_id):
 ADMIN_USERNAME = 'Brilliance'
 ADMIN_PASSWORD_HASH = generate_password_hash('Heisenb3rg@1')
 
-# Newsletter data file
-NEWSLETTERS_FILE = 'newsletters_data.json'
+# In-memory storage for Vercel (in production, use a database)
+NEWSLETTERS_DATA = [
+    {
+        'id': 1,
+        'title': 'Getting Started with AI',
+        'description': 'An introduction to artificial intelligence and machine learning concepts.',
+        'date': '2025-01-01',
+        'filename': 'sample_1.pdf',
+        'downloads': 0,
+        'uploaded_at': '2025-01-01T00:00:00',
+        'preview_image': 'preview_1.jpg'
+    },
+    {
+        'id': 2,
+        'title': 'Cloud Computing Fundamentals',
+        'description': 'Understanding cloud computing, its benefits, and implementation strategies.',
+        'date': '2025-01-15',
+        'filename': 'sample_2.pdf',
+        'downloads': 0,
+        'uploaded_at': '2025-01-15T00:00:00',
+        'preview_image': 'preview_2.jpg'
+    }
+]
 
 def load_newsletters():
-    """Load newsletters from JSON file"""
-    if os.path.exists(NEWSLETTERS_FILE):
-        with open(NEWSLETTERS_FILE, 'r') as f:
-            return json.load(f)
-    return []
+    """Load newsletters from memory"""
+    return NEWSLETTERS_DATA
 
 def save_newsletters(newsletters):
-    """Save newsletters to JSON file"""
-    with open(NEWSLETTERS_FILE, 'w') as f:
-        json.dump(newsletters, f, indent=2)
+    """Save newsletters to memory"""
+    global NEWSLETTERS_DATA
+    NEWSLETTERS_DATA = newsletters
 
 def allowed_file(filename, file_type='pdf'):
     """Check if file extension is allowed"""
@@ -75,95 +90,14 @@ def script():
 @app.route('/newsletters/<filename>')
 def serve_newsletter(filename):
     """Serve newsletter PDF files"""
-    response = send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-    # Set headers to display PDF in browser instead of downloading
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = 'inline; filename=' + filename
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    return response
+    # For Vercel, we'll return a placeholder since file storage isn't available
+    return jsonify({'error': 'File storage not available in serverless environment'}), 404
 
 @app.route('/read/<filename>')
 def read_newsletter(filename):
     """Read newsletter PDF in browser"""
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'File not found'}), 404
-    
-    # Create an HTML page that embeds the PDF
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Reading: {filename}</title>
-        <style>
-            body {{
-                margin: 0;
-                padding: 0;
-                background: #0f0f23;
-                font-family: Arial, sans-serif;
-            }}
-            .pdf-container {{
-                width: 100vw;
-                height: 100vh;
-                display: flex;
-                flex-direction: column;
-            }}
-            .pdf-header {{
-                background: #1a1a2e;
-                color: white;
-                padding: 1rem;
-                border-bottom: 1px solid #2d2d4a;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }}
-            .pdf-header h1 {{
-                margin: 0;
-                font-size: 1.2rem;
-            }}
-            .pdf-header a {{
-                color: #6366f1;
-                text-decoration: none;
-                padding: 0.5rem 1rem;
-                border: 1px solid #6366f1;
-                border-radius: 5px;
-                transition: all 0.3s ease;
-            }}
-            .pdf-header a:hover {{
-                background: #6366f1;
-                color: white;
-            }}
-            .pdf-viewer {{
-                flex: 1;
-                width: 100%;
-            }}
-            .pdf-viewer embed {{
-                width: 100%;
-                height: 100%;
-                border: none;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="pdf-container">
-            <div class="pdf-header">
-                <h1>📄 {filename}</h1>
-                <a href="/newsletters/{filename}" download>💾 Download PDF</a>
-            </div>
-            <div class="pdf-viewer">
-                <embed src="/newsletters/{filename}" type="application/pdf" />
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
-    return html_content
+    # For Vercel, we'll return a placeholder since file storage isn't available
+    return jsonify({'error': 'File storage not available in serverless environment'}), 404
 
 @app.route('/api/newsletters')
 def api_newsletters():
@@ -217,34 +151,14 @@ def upload_newsletter():
         if not all([title, description, date]):
             return jsonify({'error': 'All fields are required'}), 400
         
-        # Handle file upload
-        if 'pdf_file' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
-        file = request.files['pdf_file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if not allowed_file(file.filename, 'pdf'):
-            return jsonify({'error': 'Only PDF files are allowed'}), 400
-        
-        # Generate secure filename
-        filename = secure_filename(file.filename)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{timestamp}_{filename}"
-        
-        # Save file
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        # Create newsletter entry
+        # For Vercel, we'll create a newsletter entry without file upload
         newsletters = load_newsletters()
         new_newsletter = {
             'id': len(newsletters) + 1,
             'title': title,
             'description': description,
             'date': date,
-            'filename': filename,
+            'filename': f'sample_{len(newsletters) + 1}.pdf',
             'downloads': 0,
             'uploaded_at': datetime.datetime.now().isoformat()
         }
@@ -268,31 +182,11 @@ def upload_preview_image(newsletter_id):
         if not newsletter:
             return jsonify({'error': 'Newsletter not found'}), 404
         
-        # Handle image upload
-        if 'preview_image' not in request.files:
-            return jsonify({'error': 'No image uploaded'}), 400
-        
-        file = request.files['preview_image']
-        if file.filename == '':
-            return jsonify({'error': 'No image selected'}), 400
-        
-        if not allowed_file(file.filename, 'image'):
-            return jsonify({'error': 'Only image files (PNG, JPG, JPEG, GIF, WEBP) are allowed'}), 400
-        
-        # Generate secure filename
-        filename = secure_filename(file.filename)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"preview_{newsletter_id}_{timestamp}_{filename}"
-        
-        # Save file
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        # Update newsletter with preview image
-        newsletter['preview_image'] = filename
+        # For Vercel, we'll use a placeholder image
+        newsletter['preview_image'] = f'preview_{newsletter_id}.jpg'
         save_newsletters(newsletters)
         
-        return jsonify({'success': True, 'preview_image': filename})
+        return jsonify({'success': True, 'preview_image': newsletter['preview_image']})
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -307,11 +201,6 @@ def delete_newsletter(newsletter_id):
         
         if not newsletter:
             return jsonify({'error': 'Newsletter not found'}), 404
-        
-        # Delete file
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], newsletter['filename'])
-        if os.path.exists(file_path):
-            os.remove(file_path)
         
         # Remove from list
         newsletters = [n for n in newsletters if n['id'] != newsletter_id]
